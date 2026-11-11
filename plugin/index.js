@@ -257,6 +257,8 @@ export function emptyCostState() {
     messages: {},
     turns: {},
     total: emptyCostBucket(),
+    firstAt: null,
+    lastAt: null,
   };
 }
 
@@ -319,7 +321,11 @@ export function viewCostState(costState) {
   }
   return {
     currency: costState.currency,
-    session: viewCostBucket(costState.total),
+    session: {
+      ...viewCostBucket(costState.total),
+      startedAt: costState.firstAt ?? null,
+      updatedAt: costState.lastAt ?? null,
+    },
     turns,
     messages,
   };
@@ -359,12 +365,39 @@ export function applyCostEvent(costState, event, pricing, providers) {
   const turn = turns[entry.turn] ?? emptyCostBucket();
   turns[entry.turn] = addCostEntry(turn, entry);
 
+  const eventTime = Number.isFinite(event.time) ? event.time : null;
   return {
     ...costState,
+    firstAt: costState.firstAt ?? eventTime,
+    lastAt: eventTime ?? costState.lastAt,
     messages: { ...costState.messages, [message.id]: entry },
     turns,
     total,
   };
+}
+
+export function normalizeBillingRange(start, end) {
+  const from = Number(start);
+  const to = Number(end);
+  if (!Number.isFinite(from) || !Number.isFinite(to)) return null;
+  const startSec = Math.floor(from);
+  const endSec = Math.ceil(to);
+  if (startSec < 0 || endSec <= startSec || endSec - startSec > 90 * 86_400) return null;
+  return { start: startSec, end: endSec };
+}
+
+export function applyCostTimeline(costState, event) {
+  const at = Number.isFinite(event?.time) ? event.time : null;
+  if (at === null) return costState;
+  if (event.type === 'turn/start') {
+    return {
+      ...costState,
+      firstAt: costState.firstAt ?? at,
+      lastAt: at,
+    };
+  }
+  if (event.type === 'turn/end') return { ...costState, lastAt: at };
+  return costState;
 }
 
 function classifyFailure(error) {
@@ -407,16 +440,22 @@ export async function apply(ctx, config = {}) {
     costsKey: '',
     costsAt: 0,
     costs: null,
+    sessionActualKey: '',
+    sessionActualAt: 0,
+    sessionActual: null,
   };
 
   function createCostProjection() {
     const providers = new Set([cfg.providerId, cfg.claudeProviderId]);
     return {
       key: COST_PROJECTION_KEY,
-      stateVersion: 1,
+      stateVersion: 2,
       stateSchema: costStateSchema,
       init: () => emptyCostState(),
-      apply: (costState, event) => applyCostEvent(costState, event, state.pricing, providers),
+      apply: (costState, event) => applyCostTimeline(
+        applyCostEvent(costState, event, state.pricing, providers),
+        event,
+      ),
       wire: {
         viewSchema: costViewSchema,
         view: (costState) => viewCostState(costState),
@@ -750,6 +789,48 @@ export async function apply(ctx, config = {}) {
     }
   }
 
+  async function handleSessionActual(req, res) {
+    const url = new URL(req.url || '/', 'http://localhost');
+    const range = normalizeBillingRange(url.searchParams.get('start'), url.searchParams.get('end'));
+    if (!range) {
+      return fail(res, 400, 'bad-range', 'Некорректный период сверки.');
+    }
+    const now = Date.now();
+    const cacheKey = `${range.start}:${range.end}`;
+    if (state.sessionActualKey === cacheKey
+        && now - state.sessionActualAt < 30_000
+        && state.sessionActual) {
+      return send(res, 200, { ok: true, ...state.sessionActual });
+    }
+    let info;
+    try {
+      info = describeProvider();
+    } catch (error) {
+      return fail(res, 503, 'settings-unavailable', error.message);
+    }
+    try {
+      const key = await resolveKey(info.ref);
+      if (!key) {
+        return fail(res, 401, 'missing-key', 'Ключ не найден в хранилище.');
+      }
+      const data = await fetchCosts(key, range);
+      const result = {
+        start: range.start,
+        end: range.end,
+        amount: data.amount,
+        requests: data.requests,
+        updatedAt: now,
+      };
+      state.sessionActualKey = cacheKey;
+      state.sessionActualAt = now;
+      state.sessionActual = result;
+      send(res, 200, { ok: true, ...result });
+    } catch (error) {
+      const failure = classifyFailure(error);
+      fail(res, failure.status, failure.code, failure.message);
+    }
+  }
+
   async function handleDefaultModel(req, res) {
     let body;
     try {
@@ -930,6 +1011,9 @@ export async function apply(ctx, config = {}) {
     state.costsKey = '';
     state.costsAt = 0;
     state.costs = null;
+    state.sessionActualKey = '';
+    state.sessionActualAt = 0;
+    state.sessionActual = null;
 
     let balance = null;
     let balanceError = null;
@@ -972,6 +1056,7 @@ export async function apply(ctx, config = {}) {
       if (req.method === 'GET' && subpath === '/status') return await handleStatus(res);
       if (req.method === 'GET' && subpath === '/balance') return await handleBalance(res);
       if (req.method === 'GET' && subpath === '/costs') return await handleCosts(res);
+      if (req.method === 'GET' && subpath === '/session-actual') return await handleSessionActual(req, res);
       if (req.method === 'POST' && subpath === '/connect') return await handleConnect(req, res);
       if (req.method === 'POST' && subpath === '/default-model') return await handleDefaultModel(req, res);
       return fail(res, 404, 'not-found', 'Not found');

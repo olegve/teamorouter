@@ -4,11 +4,13 @@ import assert from 'node:assert/strict';
 import {
   addCostEntry,
   applyCostEvent,
+  applyCostTimeline,
   contextMultipliers,
   costStateSchema,
   costViewSchema,
   emptyCostState,
   estimateCostNanos,
+  normalizeBillingRange,
   normalizeUsage,
   priceRates,
   viewCostState,
@@ -255,6 +257,46 @@ test('peak/off-peak fields do not change the base estimate yet', () => {
   });
   const usage = normalizeUsage({ inputTokens: 1_000_000, outputTokens: 1_000_000 });
   assert.equal(estimateCostNanos(price, usage), 2_000_000_000);
+});
+
+test('session timestamps follow turn lifecycle and assistant messages', () => {
+  let state = emptyCostState();
+  state = applyCostTimeline(state, { type: 'turn/start', time: 1_000 });
+  assert.equal(state.firstAt, 1_000);
+  assert.equal(state.lastAt, 1_000);
+
+  state = applyCostEvent(state, {
+    type: 'assistant/message',
+    time: 2_500,
+    data: {
+      turn: 1,
+      step: 1,
+      message: { id: 'm1', source: { provider: 'teamorouter', model: 'known' } },
+      usage: { inputTokens: 10, outputTokens: 5 },
+    },
+  }, new Map([['known', tokenPrice(1, 1)]]), new Set(['teamorouter']));
+  assert.equal(state.firstAt, 1_000);
+  assert.equal(state.lastAt, 2_500);
+
+  state = applyCostTimeline(state, { type: 'turn/start', time: 3_000 });
+  assert.equal(state.firstAt, 1_000);
+  assert.equal(state.lastAt, 3_000);
+
+  state = applyCostTimeline(state, { type: 'turn/end', time: 4_000 });
+  assert.equal(state.lastAt, 4_000);
+
+  const view = viewCostState(state);
+  assert.equal(view.session.startedAt, 1_000);
+  assert.equal(view.session.updatedAt, 4_000);
+});
+
+test('billing reconciliation range is validated and bounded', () => {
+  assert.deepEqual(normalizeBillingRange(1_000, 2_500), { start: 1_000, end: 2_500 });
+  assert.deepEqual(normalizeBillingRange('1000.2', '2000.1'), { start: 1_000, end: 2_001 });
+  assert.equal(normalizeBillingRange(2_000, 1_000), null);
+  assert.equal(normalizeBillingRange(0, 0), null);
+  assert.equal(normalizeBillingRange('x', 1_000), null);
+  assert.equal(normalizeBillingRange(0, 91 * 86_400), null);
 });
 
 test('persisted state survives a JSON round-trip', () => {

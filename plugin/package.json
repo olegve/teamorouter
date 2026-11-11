@@ -1,9 +1,9 @@
 {
   "name": "@local/dsh-teamorouter",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "type": "module",
-  "description": "TeamoRouter account page, balance, and one-click provider setup for DeepSeek Harness",
+  "description": "TeamoRouter provider setup, account balance, and live cost tracking for DeepSeek Harness",
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",

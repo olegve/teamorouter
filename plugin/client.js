@@ -77,6 +77,21 @@ window.__ModuleLoader__.load({
       costNoPrice: 'No price for this model',
       costPartial: 'Some requests have no price yet',
       estimated: 'estimate',
+      reconcile: 'Reconcile',
+      reconcileTitle: 'Session cost reconciliation',
+      reconcileHint: 'Compare the estimate with the billing API for this session period',
+      estimatedCost: 'Estimated',
+      actualCost: 'Actual for key period',
+      actualRequests: 'Requests in billing',
+      estimatedRequests: 'Estimated requests',
+      actualRange: 'Period',
+      difference: 'Difference',
+      actualHint: 'Billing returns the total for the whole API key over the selected period. Other sessions, retries and failed calls may be included.',
+      actualLoading: 'Loading billing data…',
+      actualUnavailable: 'Billing data is unavailable',
+      actualNoStart: 'Session start time is unavailable',
+      refresh: 'Refresh',
+      close: 'Close',
       modelsList: 'Models',
       defaultModel: 'Default model',
       makeDefault: 'Make default',
@@ -159,6 +174,21 @@ window.__ModuleLoader__.load({
       costNoPrice: 'Нет цены для этой модели',
       costPartial: 'Часть запросов пока без цены',
       estimated: 'оценка',
+      reconcile: 'Сверить',
+      reconcileTitle: 'Сверка стоимости сессии',
+      reconcileHint: 'Сравнить оценку с billing API за период сессии',
+      estimatedCost: 'Оценка',
+      actualCost: 'Факт по ключу за период',
+      actualRequests: 'Запросов в billing',
+      estimatedRequests: 'Запросов в оценке',
+      actualRange: 'Период',
+      difference: 'Разница',
+      actualHint: 'Billing возвращает сумму по всему API-ключу за выбранный период. В неё могут попасть другие сессии, повторы и неудачные запросы.',
+      actualLoading: 'Загружаю данные billing…',
+      actualUnavailable: 'Данные billing недоступны',
+      actualNoStart: 'Время начала сессии неизвестно',
+      refresh: 'Обновить',
+      close: 'Закрыть',
       modelsList: 'Модели',
       defaultModel: 'Модель по умолчанию',
       makeDefault: 'Сделать основной',
@@ -349,6 +379,49 @@ window.__ModuleLoader__.load({
         textOverflow: 'ellipsis',
         minWidth: 0,
         overflow: 'hidden',
+      },
+      dialog: {
+        width: 'min(460px, calc(100vw - 32px))',
+        maxWidth: 'calc(100vw - 32px)',
+        padding: 0,
+        border: '0.5px solid var(--dsw-alias-border-l3)',
+        borderRadius: 'var(--dsw-radius-xl)',
+        background: 'var(--dsw-alias-bg-layer-1)',
+        color: 'var(--dsw-alias-label-primary)',
+        boxShadow: '0 12px 40px rgba(0, 0, 0, 0.28)',
+        overflow: 'hidden',
+      },
+      dialogHead: {
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        gap: 12, padding: '14px 16px',
+        borderBottom: '0.5px solid var(--dsw-alias-border-l2)',
+      },
+      dialogTitle: { fontSize: 14, fontWeight: 500, lineHeight: '22px' },
+      dialogClose: {
+        border: 'none', background: 'transparent', color: 'var(--dsw-alias-label-tertiary)',
+        cursor: 'pointer', font: 'inherit', fontSize: 18, lineHeight: '20px', padding: '0 4px',
+      },
+      dialogBody: {
+        display: 'flex', flexDirection: 'column', gap: 10, padding: '14px 16px',
+      },
+      dialogRow: {
+        display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+        gap: 12, fontSize: 13, lineHeight: '20px',
+      },
+      dialogLabel: { color: 'var(--dsw-alias-label-tertiary)' },
+      dialogValue: {
+        color: 'var(--dsw-alias-label-primary)', fontWeight: 500,
+        fontVariantNumeric: 'tabular-nums',
+      },
+      dialogRule: { height: 1, background: 'var(--dsw-alias-border-l2)', margin: '2px 0' },
+      dialogHint: { fontSize: 12, lineHeight: '18px', color: 'var(--dsw-alias-label-tertiary)' },
+      dialogError: {
+        fontSize: 12, lineHeight: '18px',
+        color: 'var(--dsw-alias-state-error-primary)',
+      },
+      dialogActions: {
+        display: 'flex', justifyContent: 'flex-end', gap: 8,
+        padding: '12px 16px', borderTop: '0.5px solid var(--dsw-alias-border-l2)',
       },
       messageCost: {
         display: 'inline-flex',
@@ -547,6 +620,84 @@ window.__ModuleLoader__.load({
           useLocaleRefresh();
           const view = useProjection(NS_COST_PROJECTION);
           const text = costChipText(view);
+          const [open, setOpen] = React.useState(false);
+          const [actual, setActual] = React.useState(null);
+          const [actualState, setActualState] = React.useState('idle');
+          const [actualError, setActualError] = React.useState('');
+          const dialogRef = React.useRef(null);
+          const requestSeq = React.useRef(0);
+          const titleId = React.useId();
+          const base = typeof globalThis.__TEAMOROUTER_ACCOUNT__?.base === 'string'
+            ? globalThis.__TEAMOROUTER_ACCOUNT__.base
+            : '';
+
+          React.useEffect(() => {
+            const dialog = dialogRef.current;
+            if (!dialog) return;
+            if (open && !dialog.open) {
+              try {
+                dialog.showModal();
+              } catch {
+                // A second click while the dialog is opening is harmless.
+              }
+            } else if (!open && dialog.open) {
+              dialog.close();
+            }
+          }, [open]);
+
+          React.useEffect(() => () => {
+            requestSeq.current += 1;
+          }, []);
+
+          async function loadActual() {
+            const session = view?.session;
+            if (!base) {
+              setActualState('error');
+              setActualError(t('actualUnavailable'));
+              return;
+            }
+            if (!session || !Number.isFinite(session.startedAt)) {
+              setActualState('error');
+              setActualError(t('actualNoStart'));
+              return;
+            }
+            const start = Math.floor(session.startedAt / 1000);
+            const end = Math.ceil(Date.now() / 1000);
+            if (end <= start) {
+              setActualState('error');
+              setActualError(t('actualUnavailable'));
+              return;
+            }
+            const seq = requestSeq.current + 1;
+            requestSeq.current = seq;
+            setActualState('loading');
+            setActualError('');
+            try {
+              const response = await fetch(
+                `${base}/session-actual?start=${start}&end=${end}`,
+                { credentials: 'same-origin' },
+              );
+              const data = await response.json().catch(() => null);
+              if (seq !== requestSeq.current) return;
+              if (!response.ok || data?.ok === false) {
+                setActualState('error');
+                setActualError(data?.error ? errorText(data.error) : t('actualUnavailable'));
+                return;
+              }
+              setActual(data);
+              setActualState('ready');
+            } catch {
+              if (seq !== requestSeq.current) return;
+              setActualState('error');
+              setActualError(t('actualUnavailable'));
+            }
+          }
+
+          function openReconcile() {
+            setOpen(true);
+            void loadActual();
+          }
+
           if (!text) return null;
           const session = view.session;
           const title = [
@@ -555,18 +706,97 @@ window.__ModuleLoader__.load({
             `${t('tokens')}: ${formatTokens(session.tokens)}`,
             session.unpriced > 0 ? `${t('costPartial')}: ${session.unpriced}` : null,
             session.unpriced >= session.requests ? t('costNoPrice') : null,
+            t('reconcileHint'),
           ].filter(Boolean).join('\n');
-          return h('span', {
-            style: S.costAnchor,
-            'data-composer-stat': 'teamorouter-cost',
-          },
-            h('span', {
-              style: S.costPill,
+
+          const actualAmount = actual ? Number(actual.amount?.value) : NaN;
+          const canCompare = session.unpriced < session.requests;
+          const delta = canCompare && Number.isFinite(actualAmount)
+            ? actualAmount - session.cost
+            : null;
+          const deltaText = delta === null
+            ? '—'
+            : `${delta >= 0 ? '+' : '−'}${formatCost(Math.abs(delta))}`;
+          const percent = delta !== null && session.cost > 0
+            ? `${delta >= 0 ? '+' : ''}${(delta / session.cost * 100).toFixed(1)}%`
+            : null;
+          const actualRequests = actual ? Number(actual.requests) : NaN;
+          const requestsDiffer = Number.isFinite(actualRequests) && actualRequests !== session.requests;
+          const periodLabel = Number.isFinite(session.startedAt)
+            ? `${new Date(session.startedAt).toLocaleString()} — ${new Date((actual?.end ?? Math.ceil(Date.now() / 1000)) * 1000).toLocaleString()}`
+            : '—';
+
+          const row = (label, value, key) => h('div', { key, style: S.dialogRow },
+            h('span', { style: S.dialogLabel }, label),
+            h('span', { style: S.dialogValue }, value),
+          );
+
+          const actualRows = actualState === 'loading'
+            ? [h('div', { key: 'loading', style: S.dialogHint }, t('actualLoading'))]
+            : actualState === 'error'
+              ? [h('div', { key: 'error', style: S.dialogError, role: 'alert' }, actualError || t('actualUnavailable'))]
+              : actual
+                ? [
+                    row(t('actualCost'), formatCost(actualAmount), 'actual-cost'),
+                    row(t('actualRequests'), String(actualRequests), 'actual-requests'),
+                    requestsDiffer
+                      ? h('div', { key: 'requests-diff', style: S.dialogHint },
+                          `${t('estimatedRequests')}: ${session.requests} · ${t('actualRequests')}: ${actualRequests}`)
+                      : null,
+                    row(t('difference'), percent === null ? deltaText : `${deltaText} (${percent})`, 'difference'),
+                    h('div', { key: 'hint', style: S.dialogHint }, t('actualHint')),
+                  ].filter(Boolean)
+                : [h('div', { key: 'idle', style: S.dialogHint }, t('actualHint'))];
+
+          return h(React.Fragment, null,
+            h('button', {
+              type: 'button',
+              style: { ...S.costAnchor, ...S.costPill, cursor: 'pointer', appearance: 'none' },
               title,
               'aria-label': title,
+              'aria-haspopup': 'dialog',
+              'data-composer-stat': 'teamorouter-cost',
+              onClick: openReconcile,
             },
               h(AccountIcon, { size: 14 }),
               h('span', { style: S.costLabel }, text),
+            ),
+            h('dialog', {
+              ref: dialogRef,
+              className: 'teamorouter-dialog',
+              style: S.dialog,
+              'aria-labelledby': titleId,
+              onClose: () => setOpen(false),
+            },
+              h('div', { style: S.dialogHead },
+                h('div', { id: titleId, style: S.dialogTitle }, t('reconcileTitle')),
+                h('button', {
+                  type: 'button',
+                  style: S.dialogClose,
+                  'aria-label': t('close'),
+                  onClick: () => setOpen(false),
+                }, '×'),
+              ),
+              h('div', { style: S.dialogBody },
+                row(t('estimatedCost'), text),
+                row(t('estimatedRequests'), String(session.requests)),
+                row(t('actualRange'), periodLabel),
+                h('div', { style: S.dialogRule }),
+                ...actualRows,
+              ),
+              h('div', { style: S.dialogActions },
+                h('button', {
+                  type: 'button',
+                  style: S.secondary,
+                  disabled: actualState === 'loading',
+                  onClick: () => void loadActual(),
+                }, t('refresh')),
+                h('button', {
+                  type: 'button',
+                  style: S.secondary,
+                  onClick: () => setOpen(false),
+                }, t('close')),
+              ),
             ),
           );
         }
