@@ -1,0 +1,9 @@
+{
+  "meta": {
+    "title": "TeamoRouter",
+    "description": "Подключение TeamoRouter по API-ключу, импорт моделей и баланс аккаунта."
+  },
+  "nav": "TeamoRouter",
+  "title": "TeamoRouter",
+  "intro": "Подключите аккаунт TeamoRouter по API-ключу. Плагин добавит провайдера, импортирует чат-модели и покажет баланс."
+}

@@ -1,0 +1,9 @@
+{
+  "meta": {
+    "title": "TeamoRouter",
+    "description": "Connect TeamoRouter with an API key, import models, and see the account balance."
+  },
+  "nav": "TeamoRouter",
+  "title": "TeamoRouter",
+  "intro": "Connect your TeamoRouter account with an API key. The plugin will add the provider, import chat models, and show the balance."
+}

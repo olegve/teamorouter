@@ -1,0 +1,5 @@
+# Host + Client bundle for the TeamoRouter account page.
+- insert:
+    - id: teamorouter-account
+      name: '@local/dsh-teamorouter'
+      config: {}
