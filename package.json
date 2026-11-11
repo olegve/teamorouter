@@ -1,0 +1,44 @@
+{
+  "name": "@local/dsh-teamorouter",
+  "version": "0.1.5",
+  "private": true,
+  "type": "module",
+  "description": "TeamoRouter provider setup, account balance, and live cost tracking for DeepSeek Harness",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/olegve/teamorouter.git"
+  },
+  "main": "./plugin/index.js",
+  "exports": {
+    ".": "./plugin/index.js",
+    "./client": "./plugin/client.js",
+    "./locale/*.json": "./plugin/locale/*.json",
+    "./icon": "./plugin/icon.svg"
+  },
+  "files": [
+    "README.md",
+    "plugin/index.js",
+    "plugin/client.js",
+    "plugin/cordis.patch.yml",
+    "plugin/package.json",
+    "plugin/locale/*.json",
+    "plugin/icon.svg"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./plugin/cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-settings-general",
+        "@deepseek-ai/dsh-client-ui-settings-models",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-chat",
+        "@deepseek-ai/dsh-client-ui-session"
+      ]
+    }
+  }
+}

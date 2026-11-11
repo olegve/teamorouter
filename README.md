@@ -5,7 +5,7 @@ Harness: добавляет провайдера и модели, показыв
 дневные/месячные затраты и оценку стоимости текущей сессии, хода и последнего
 запроса хода.
 
-Версия: `0.1.4`. Плагин распространяется как локальный bundle и не опубликован
+Версия: `0.1.5`. Плагин распространяется как локальный bundle и не опубликован
 в npm.
 
 ## Что делает плагин
@@ -114,8 +114,9 @@ cost =
 
 ## Установка
 
-Плагин лежит в подкаталоге `plugin/`. Устанавливать нужно именно его: в этой
-папке находятся `package.json`, `cordis.patch.yml`, Host- и Client-части.
+В корне репозитория лежит `package.json` — это bundle для установки прямо из
+GitHub. Подкаталог `plugin/` содержит те же Host- и Client-файлы и подходит для
+локальной установки. Можно устанавливать корень репозитория или `plugin/`.
 
 ### 1. Клонировать репозиторий
 
@@ -143,29 +144,33 @@ cd teamorouter
 
 **Прямо из GitHub, без клонирования:**
 
-В поле пакета в **Add plugin** можно указать Git-адрес с подкаталогом:
+В поле пакета в **Add plugin** укажите обычный адрес репозитория:
 
 ```text
-git+https://github.com/olegve/teamorouter.git#path:/plugin
+https://github.com/olegve/teamorouter
 ```
 
 или:
 
 ```text
-github:olegve/teamorouter#path:/plugin
+github:olegve/teamorouter
 ```
 
-Плагин лежит в подкаталоге `plugin/`, поэтому обычный URL репозитория без
-`#path:/plugin` не сработает: в корне репозитория нет `package.json`.
-Установка с этим fragment проверена через pnpm 11.28.5: ставится
-`@local/dsh-teamorouter 0.1.4`. Если конкретная версия DSH не принимает
-fragment в диалоге, используйте локальный клон и путь к `plugin/`.
+Корневой `package.json` описывает bundle: `dsh.bundle.patch` указывает на
+`plugin/cordis.patch.yml`, а `exports` — на Host- и Client-части. Проверено
+через pnpm 11.28.5: устанавливается `@local/dsh-teamorouter 0.1.5`.
+
+Для старых тегов без корневого `package.json` остаётся вариант с подкаталогом:
+
+```text
+git+https://github.com/olegve/teamorouter.git#path:/plugin
+```
 
 **Через инструмент `plugin_manager`:**
 
 ```text
 action: install_bundle
-target: /absolute/path/to/teamorouter/plugin
+target: /absolute/path/to/teamorouter
 ```
 
 Инструмент доступен не во всех пресетах и требует разрешения на управление
@@ -174,7 +179,7 @@ target: /absolute/path/to/teamorouter/plugin
 **Через CLI:**
 
 ```bash
-dsh plugin --profile desktop add /absolute/path/to/teamorouter/plugin
+dsh plugin --profile desktop add /absolute/path/to/teamorouter
 ```
 
 После `dsh plugin add` bundle нужно включить на странице **Plugins**: CLI
@@ -221,8 +226,8 @@ git pull
 ```
 
 Затем удалите и установите bundle заново через **Plugins** (Remove → Add
-plugin → путь к `plugin/`) или через `plugin_manager` (`remove_bundle`, затем
-`install_bundle`). Если профиль работает без HMR, перезапустите DSH.
+plugin → URL репозитория или путь к корню) или через `plugin_manager`
+(`remove_bundle`, затем `install_bundle`). Если профиль работает без HMR, перезапустите DSH.
 
 ## Удаление
 
@@ -248,6 +253,7 @@ plugin → путь к `plugin/`) или через `plugin_manager` (`remove_bu
 Структура:
 
 ```text
+package.json          корневой bundle для установки из GitHub
 plugin/
   index.js            Host: настройки, ключ, баланс, costs, проекция стоимости
   client.js           Client: страница TeamoRouter, чипы стоимости
