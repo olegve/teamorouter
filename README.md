@@ -141,6 +141,26 @@ cd teamorouter
 6. Убедитесь, что bundle включён (при необходимости — **Enable now**).
 7. Обновите страницу, если раздел **TeamoRouter** не появился сразу.
 
+**Прямо из GitHub, без клонирования:**
+
+В поле пакета в **Add plugin** можно указать Git-адрес с подкаталогом:
+
+```text
+git+https://github.com/olegve/teamorouter.git#path:/plugin
+```
+
+или:
+
+```text
+github:olegve/teamorouter#path:/plugin
+```
+
+Плагин лежит в подкаталоге `plugin/`, поэтому обычный URL репозитория без
+`#path:/plugin` не сработает: в корне репозитория нет `package.json`.
+Установка с этим fragment проверена через pnpm 11.28.5: ставится
+`@local/dsh-teamorouter 0.1.4`. Если конкретная версия DSH не принимает
+fragment в диалоге, используйте локальный клон и путь к `plugin/`.
+
 **Через инструмент `plugin_manager`:**
 
 ```text
